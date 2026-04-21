@@ -8,35 +8,48 @@ shell.executable("bash")
 
 # Settings ------------------------------------------------------------------------------------------------------------------
 
+
 workdir: config["workdir"]
 
+
 # Functions -----------------------------------------------------------------------------------------------------------------
+
 
 def generate_db_name(wildcards=None):
     path, dbname = os.path.split(config["blast_db"])
     path, primername = os.path.split(config["primers"])
-    return dbname + '_' + primername.split('.')[0]
+    return dbname + "_" + primername.split(".")[0]
+
 
 # Input rule ----------------------------------------------------------------------------------------------------------------
- 
+
+
 rule all:
-    input: 
+    input:
         # "primer_blast/missing_barcodes.txt",
         "primer_blast/no_barcodes.txt",
-        "blast_db/{name}.fasta".format(name = generate_db_name()),
-        expand("blast_db/{name}.{ext}", name = generate_db_name(), ext= ["nto", "ntf", "nsq", "not", "nos", "nog", "nin", "nhr", "ndb"]),
-        "report.txt"
-        
+        "blast_db/{name}.fasta".format(name=generate_db_name()),
+        expand(
+            "blast_db/{name}.{ext}",
+            name=generate_db_name(),
+            ext=["nto", "ntf", "nsq", "not", "nos", "nog", "nin", "nhr", "ndb"],
+        ),
+        "report.txt",
+
+
 # Workflow ------------------------------------------------------------------------------------------------------------------
+
 
 rule get_taxid_from_db:
     output:
-        temp("db_filtering/taxid_list.txt")
+        temp("db_filtering/taxid_list.txt"),
+    conda:
+        "./envs/blast.yaml"
     params:
-        blast_DB = config["blast_db"],
-        taxdb = config["taxdb"]
-    message: "Extracting taxid list from database"
-    conda: "./envs/blast.yaml"
+        blast_DB=config["blast_db"],
+        taxdb=config["taxdb"],
+    message:
+        "Extracting taxid list from database"
     shell:
         """
         export BLASTDB={params.taxdb}
@@ -44,32 +57,37 @@ rule get_taxid_from_db:
         blastdbcmd -db {params.blast_DB} -tax_info -outfmt '%T' > {output}
         """
 
+
 rule filter_taxid:
     input:
-        "db_filtering/taxid_list.txt"
+        "db_filtering/taxid_list.txt",
     output:
-        mask = "db_filtering/taxid_mask.txt",
-        failed = "db_filtering/taxid_missing.txt"
+        mask="db_filtering/taxid_mask.txt",
+        failed="db_filtering/taxid_missing.txt",
     params:
-        taxid = config["parent_node"],
-        lineage = config["rankedlineage_dmp"],
-        nodes = config["nodes_dmp"]
-    message: "Extracting taxids under parent node"
+        taxid=config["parent_node"],
+        lineage=config["rankedlineage_dmp"],
+        nodes=config["nodes_dmp"],
+    message:
+        "Extracting taxids under parent node"
     script:
         "./scripts/make_blast_mask.py"
 
+
 rule get_seqidlist:
     input:
-        "db_filtering/taxid_mask.txt"
+        "db_filtering/taxid_mask.txt",
     output:
-        seqids = temp("db_filtering/seqids.txt"),
-        binary = temp("db_filtering/seqids.acc"),
-        id_table = temp("db_filtering/table.tsv")
+        seqids=temp("db_filtering/seqids.txt"),
+        binary=temp("db_filtering/seqids.acc"),
+        id_table=temp("db_filtering/table.tsv"),
+    conda:
+        "./envs/blast.yaml"
     params:
-        blast_DB = config["blast_db"],
-        taxdb = config["taxdb"]
-    message: "Retrieving SeqIDs to search"
-    conda: "./envs/blast.yaml"
+        blast_DB=config["blast_db"],
+        taxdb=config["taxdb"],
+    message:
+        "Retrieving SeqIDs to search"
     shell:
         """
         export BLASTDB={params.taxdb}
@@ -81,32 +99,35 @@ rule get_seqidlist:
         blastdb_aliastool -seqid_file_in {output.seqids} -seqid_file_out {output.binary}
         """
 
+
 rule primers_explicit:
     input:
-        config["primers"]
+        config["primers"],
     output:
-        "primers_explicit.fa"
+        "primers_explicit.fa",
     message:
         "Disambiguating primers"
     script:
         "scripts/IUPAC_translate.py"
 
+
 rule find_primer_matches:
     input:
-        seqids = "db_filtering/seqids.txt",
-        binary = "db_filtering/seqids.acc",
-        primers = "primers_explicit.fa"
+        seqids="db_filtering/seqids.txt",
+        binary="db_filtering/seqids.acc",
+        primers="primers_explicit.fa",
     output:
-        "primer_blast/primer_blast.tsv"
-    params:
-        blast_DB = config["blast_db"],
-        taxdb = config["taxdb"],
-        cov = config["primerBlast_coverage"],
-        identity = config["primerBlast_identity"]
+        "primer_blast/primer_blast.tsv",
+    conda:
+        "./envs/blast.yaml"
     threads: workflow.cores
+    params:
+        blast_DB=config["blast_db"],
+        taxdb=config["taxdb"],
+        cov=config["primerBlast_coverage"],
+        identity=config["primerBlast_identity"],
     message:
         "Blasting primers"
-    conda: "./envs/blast.yaml"
     shell:
         """
         export BLASTDB={params.taxdb}
@@ -123,25 +144,30 @@ rule find_primer_matches:
                 | sort -k1 | sed '1 i\seqid\tquery\ttaxid\tstart\tend\tlength\tstrand\tmismatch' > {output}
         """
 
+
 rule extract_barcodes_pos:
     input:
-        "primer_blast/primer_blast.tsv"
+        "primer_blast/primer_blast.tsv",
     output:
-        "primer_blast/barcode_pos.tsv"
-    message: "Extracting barcodes sequences"
+        "primer_blast/barcode_pos.tsv",
+    message:
+        "Extracting barcodes sequences"
     script:
         "./scripts/extract_barcodes.py"
 
+
 rule extract_barcodes_seq:
     input:
-        "primer_blast/barcode_pos.tsv"
+        "primer_blast/barcode_pos.tsv",
     output:
-        "blast_db/{name}.fasta"
-    message: "Extracting barcode sequences"
+        "blast_db/{name}.fasta",
+    conda:
+        "./envs/blast.yaml"
     params:
-        blast_DB = config["blast_db"],
-        taxdb = config["taxdb"]
-    conda: "./envs/blast.yaml"
+        blast_DB=config["blast_db"],
+        taxdb=config["taxdb"],
+    message:
+        "Extracting barcode sequences"
     shell:
         """
         export BLASTDB={params.taxdb}
@@ -154,19 +180,22 @@ rule extract_barcodes_seq:
         done < {input}
         """
 
-rule missing_barcodes: 
+
+rule missing_barcodes:
     input:
-        seqids = "db_filtering/seqids.txt",
-        barcodes = "primer_blast/barcode_pos.tsv",
-        table = "db_filtering/table.tsv" 
+        seqids="db_filtering/seqids.txt",
+        barcodes="primer_blast/barcode_pos.tsv",
+        table="db_filtering/table.tsv",
     output:
-        acc = temp("primer_blast/no_barcodes.txt"),
-        full = "primer_blast/missing_barcodes.txt"
-    message: "Identifying missing barcodes"
+        acc=temp("primer_blast/no_barcodes.txt"),
+        full="primer_blast/missing_barcodes.txt",
+    conda:
+        "./envs/blast.yaml"
     params:
-        blast_DB = config["blast_db"],
-        taxdb = config["taxdb"]
-    conda: "./envs/blast.yaml"
+        blast_DB=config["blast_db"],
+        taxdb=config["taxdb"],
+    message:
+        "Identifying missing barcodes"
     shell:
         """
         
@@ -178,20 +207,26 @@ rule missing_barcodes:
          join --nocheck-order -t $'\t' <(sort -b -k1d {input.table}) <(sort -b -k1d {output.acc}) > {output.full}
         """
 
+
 rule make_barcode_db:
-    input: 
-        fasta = "blast_db/{name}.fasta".format(name=generate_db_name()),
-        id_table = "db_filtering/table.tsv"
+    input:
+        fasta="blast_db/{name}.fasta".format(name=generate_db_name()),
+        id_table="db_filtering/table.tsv",
     output:
-        taxid_mapper = temp("blast_db/taxmap.tsv"),
-        DB = expand("blast_db/{name}.{ext}", name = generate_db_name(), 
-                    ext= ["nto", "ntf", "nsq", "not", "nos", "nog", "nin", "nhr", "ndb"])
-    params: 
-        blast_DB = config["blast_db"],
-        taxdb = config["taxdb"],
-        dbname = generate_db_name
-    message: "Formatting barcodes to BLAST database"
-    conda: "./envs/blast.yaml"
+        taxid_mapper=temp("blast_db/taxmap.tsv"),
+        DB=expand(
+            "blast_db/{name}.{ext}",
+            name=generate_db_name(),
+            ext=["nto", "ntf", "nsq", "not", "nos", "nog", "nin", "nhr", "ndb"],
+        ),
+    conda:
+        "./envs/blast.yaml"
+    params:
+        blast_DB=config["blast_db"],
+        taxdb=config["taxdb"],
+        dbname=generate_db_name,
+    message:
+        "Formatting barcodes to BLAST database"
     shell:
         """
         export BLASTDB={params.taxdb}
@@ -201,20 +236,22 @@ rule make_barcode_db:
         makeblastdb -in {input.fasta} -dbtype nucl -parse_seqids -blastdb_version 5 -taxid_map {output.taxid_mapper} -out blast_db/{params.dbname}
         """
 
+
 rule write_report:
     input:
-        db_txd = "db_filtering/taxid_list.txt",
-        txd_mask = "db_filtering/taxid_mask.txt",
-        txd_failed = "db_filtering/taxid_missing.txt",
-        primers = config["primers"],
-        fasta = "blast_db/{name}.fasta".format(name=generate_db_name()),
-        missing = "primer_blast/no_barcodes.txt"
+        db_txd="db_filtering/taxid_list.txt",
+        txd_mask="db_filtering/taxid_mask.txt",
+        txd_failed="db_filtering/taxid_missing.txt",
+        primers=config["primers"],
+        fasta="blast_db/{name}.fasta".format(name=generate_db_name()),
+        missing="primer_blast/no_barcodes.txt",
     output:
-        "report.txt"
+        "report.txt",
     params:
-        blast_DB = config["blast_db"],
-        parent = config["parent_node"]
-    message: "Logging session info"
+        blast_DB=config["blast_db"],
+        parent=config["parent_node"],
+    message:
+        "Logging session info"
     shell:
         """
         date > {output}
