@@ -13,7 +13,9 @@ def main(taxid_file, parent, output, rankedlineage_dmp, nodes_dmp, failed):
 	with open(output, "w") as fout, open(failed, 'w') as ffailed:
 		for taxid in db_entries:
 			try:
-				if txd.isDescendantOf(str(taxid).strip(), str(parent).strip()):
+				taxid = str(taxid).strip()
+				parent = str(parent).strip()
+				if taxid == parent or txd.isDescendantOf(taxid, parent):
 					fout.write(taxid + "\n")
 				else:
 					pass
